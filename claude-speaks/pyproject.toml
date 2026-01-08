@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-speak"
+version = "0.1.0"
+description = "High-quality CLI text-to-speech using MLX-Audio for Apple Silicon"
+requires-python = ">=3.10"
+dependencies = [
+    "mlx-audio>=0.2.0",
+    "torch",
+    "spacy",
+    "phonemizer",
+    "misaki",
+    "loguru",
+    "num2words",
+    "sounddevice",
+]
+
+[project.scripts]
+claude-speak = "claude_speak:main"
+claude-speak-daemon = "claude_speak_daemon:main"
+claude-speak-client = "claude_speak_client:main"
+
+[tool.setuptools]
+py-modules = ["claude_speak", "claude_speak_daemon", "claude_speak_client"]
