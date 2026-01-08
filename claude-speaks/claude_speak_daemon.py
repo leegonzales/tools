@@ -16,6 +16,7 @@ Usage:
 import argparse
 import json
 import os
+import queue
 import signal
 import socket
 import sys
@@ -36,9 +37,11 @@ class TTSDaemon:
     def __init__(self, model_name: str = DEFAULT_MODEL):
         self.model_name = model_name
         self.model = None
-        self.pipeline = None
         self.running = False
         self.server_socket = None
+        # Queue for sequential request processing (prevents audio overlap)
+        self.request_queue = queue.Queue()
+        self.worker_thread = None
 
     def load_model(self):
         """Load the TTS model into memory."""
@@ -50,32 +53,52 @@ class TTSDaemon:
         print("Model loaded and ready.")
 
     def generate_and_play(self, text: str, voice: str = DEFAULT_VOICE, speed: float = 1.0) -> dict:
-        """Generate speech and play it."""
+        """Generate speech and stream it in real-time (low latency)."""
         try:
-            import mlx.core as mx
             import sounddevice as sd
             import numpy as np
 
-            # Generate audio
-            audio_chunks = []
-            for result in self.model.generate(text, voice=voice, speed=speed):
-                audio_chunks.append(result.audio)
+            chunks_played = 0
 
-            if not audio_chunks:
+            # Stream audio chunks as they're generated (24kHz for Kokoro)
+            with sd.OutputStream(samplerate=24000, channels=1, dtype=np.float32) as stream:
+                for result in self.model.generate(text, voice=voice, speed=speed):
+                    # Convert MLX array to numpy and write directly to audio stream
+                    audio_chunk = np.array(result.audio.tolist(), dtype=np.float32)
+                    stream.write(audio_chunk)
+                    chunks_played += 1
+
+            if chunks_played == 0:
                 return {"success": False, "error": "No audio generated"}
-
-            # Concatenate and convert to numpy
-            audio = mx.concatenate(audio_chunks)
-            audio_np = np.array(audio.tolist(), dtype=np.float32)
-
-            # Play audio (24kHz sample rate for Kokoro)
-            sd.play(audio_np, samplerate=24000)
-            sd.wait()
 
             return {"success": True}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def _worker_loop(self):
+        """Process speak requests sequentially (prevents audio overlap)."""
+        while self.running:
+            try:
+                # Wait for request with timeout (allows clean shutdown)
+                try:
+                    request, response_queue = self.request_queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+
+                # Process the speak request
+                result = self.generate_and_play(
+                    text=request.get("text", ""),
+                    voice=request.get("voice", DEFAULT_VOICE),
+                    speed=request.get("speed", 1.0),
+                )
+
+                # Send result back to the client handler
+                response_queue.put(result)
+                self.request_queue.task_done()
+
+            except Exception as e:
+                print(f"Worker error: {e}")
 
     def handle_client(self, conn: socket.socket):
         """Handle a single client connection."""
@@ -95,11 +118,14 @@ class TTSDaemon:
             request = json.loads(data.decode("utf-8").strip())
 
             if request.get("command") == "speak":
-                result = self.generate_and_play(
-                    text=request.get("text", ""),
-                    voice=request.get("voice", DEFAULT_VOICE),
-                    speed=request.get("speed", 1.0),
-                )
+                # Queue the request and wait for response (sequential processing)
+                response_queue = queue.Queue()
+                self.request_queue.put((request, response_queue))
+                # Wait for worker to process (with timeout)
+                try:
+                    result = response_queue.get(timeout=60.0)
+                except queue.Empty:
+                    result = {"success": False, "error": "Request timed out"}
             elif request.get("command") == "ping":
                 result = {"success": True, "status": "ready"}
             else:
@@ -125,6 +151,12 @@ class TTSDaemon:
         # Load the model
         self.load_model()
 
+        # Start worker thread for sequential audio processing
+        self.running = True
+        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.worker_thread.start()
+        print("Worker thread started.")
+
         # Create Unix socket
         self.server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server_socket.bind(str(SOCKET_PATH))
@@ -136,7 +168,6 @@ class TTSDaemon:
         # Write PID file
         PID_FILE.write_text(str(os.getpid()))
 
-        self.running = True
         print(f"Daemon listening on {SOCKET_PATH}")
 
         # Handle shutdown signals
