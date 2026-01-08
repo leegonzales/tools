@@ -20,14 +20,14 @@ SOCKET_PATH = RUNTIME_DIR / "claude-speak.sock"
 DEFAULT_VOICE = "bm_george"
 
 
-def speak_via_daemon(text: str, voice: str = DEFAULT_VOICE, speed: float = 1.0) -> dict:
+def speak_via_daemon(text: str, voice: str = DEFAULT_VOICE, speed: float = 1.0, timeout: float = 300.0) -> dict:
     """Send speak request to daemon."""
     if not SOCKET_PATH.exists():
         return {"success": False, "error": "daemon_not_running"}
 
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(30.0)
+        sock.settimeout(timeout)
         sock.connect(str(SOCKET_PATH))
 
         request = {
@@ -87,6 +87,12 @@ def main():
         action="store_true",
         help="Suppress output on success"
     )
+    parser.add_argument(
+        "-t", "--timeout",
+        type=float,
+        default=300.0,
+        help="Timeout in seconds (default: 300)"
+    )
 
     args = parser.parse_args()
 
@@ -105,7 +111,7 @@ def main():
         return 1
 
     # Try daemon first
-    result = speak_via_daemon(text, voice=args.voice, speed=args.speed)
+    result = speak_via_daemon(text, voice=args.voice, speed=args.speed, timeout=args.timeout)
 
     if result.get("success"):
         return 0
