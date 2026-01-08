@@ -119,6 +119,34 @@ class TestProtocol:
         assert json.loads(json.dumps(response))["status"] == "ready"
 
 
+class TestInputLimits:
+    """Test input validation and limits."""
+
+    def test_max_text_length_constant(self):
+        """Test that max text length is defined."""
+        from claude_speak_client import MAX_TEXT_LENGTH
+
+        assert MAX_TEXT_LENGTH == 5000
+
+    def test_long_text_rejected_without_force(self):
+        """Test that very long text is rejected."""
+        import subprocess
+        import sys
+
+        long_text = "x" * 6000  # Over the 5000 char limit
+
+        result = subprocess.run(
+            [sys.executable, "-m", "claude_speak_client", long_text],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent,
+        )
+
+        assert result.returncode == 1
+        assert "too long" in result.stderr.lower()
+        assert "--force" in result.stderr
+
+
 class TestVoices:
     """Test voice configuration."""
 

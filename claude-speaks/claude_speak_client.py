@@ -18,6 +18,7 @@ RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", tempfile.gettempdir()))
 SOCKET_PATH = RUNTIME_DIR / "claude-speak.sock"
 
 DEFAULT_VOICE = "bm_george"
+MAX_TEXT_LENGTH = 5000  # ~1000 words, about 2-3 minutes of speech
 
 
 def speak_via_daemon(text: str, voice: str = DEFAULT_VOICE, speed: float = 1.0, timeout: float = 300.0) -> dict:
@@ -93,6 +94,11 @@ def main():
         default=300.0,
         help="Timeout in seconds (default: 300)"
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=f"Allow text longer than {MAX_TEXT_LENGTH} chars"
+    )
 
     args = parser.parse_args()
 
@@ -108,6 +114,12 @@ def main():
     if not text:
         if not args.quiet:
             print("Error: No text provided", file=sys.stderr)
+        return 1
+
+    # Guard against very long text (prevents accidental massive dumps)
+    if len(text) > MAX_TEXT_LENGTH and not args.force:
+        print(f"Error: Text too long ({len(text)} chars, max {MAX_TEXT_LENGTH})", file=sys.stderr)
+        print("Use --force to override this limit", file=sys.stderr)
         return 1
 
     # Try daemon first
