@@ -1,0 +1,78 @@
+#!/bin/zsh
+# claude-token-harvest LABEL
+#
+# Mint a long-lived Claude Code OAuth token for one account and store it at
+# ~/.config/claude-env/tokens/LABEL.token (0600, dir 0700). Run once per
+# account, e.g. `claude-token-harvest a`, then `claude-token-harvest b`.
+#
+# Before each run, make sure your browser is signed in to the claude.ai
+# account you want for this LABEL (a private window for the second account
+# works). `claude setup-token` opens the browser login.
+#
+# After setup-token prints the token, select and copy it (both lines); the
+# script reads the clipboard, then clears it. The token is never printed in
+# full or put on a command line.
+# Use the token with: claude-as LABEL [claude args...]
+set -euo pipefail
+
+label=${1:-}
+if [[ ! $label =~ '^[A-Za-z0-9_-]{1,32}$' ]]; then
+  print -u2 "usage: claude-token-harvest LABEL   (letters, digits, _ or -)"
+  exit 2
+fi
+
+dir=$HOME/.config/claude-env/tokens
+out=$dir/$label.token
+umask 077
+if [[ -L $dir || -L ${dir:h} ]]; then
+  print -u2 "refusing: $dir or its parent is a symlink"
+  exit 2
+fi
+mkdir -p "$dir"
+if [[ ! -O $dir ]]; then
+  print -u2 "refusing: $dir is not owned by you"
+  exit 2
+fi
+chmod 700 "$dir"
+
+if [[ -e $out ]]; then
+  read -q "?$out exists. Replace it? [y/N] " || { print; exit 1; }
+  print
+fi
+
+# A token already in the environment would make setup-token act as that
+# account; make sure it starts clean.
+unset CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY
+
+print "== Account '$label': running 'claude setup-token' (browser login) =="
+claude setup-token
+
+# Paste-only. Auto-capture from a session log joined wrapped lines and let
+# the greedy match swallow the next line's text, which gave a 401 token.
+token=""
+valid() { [[ $1 =~ '^sk-ant-[a-z]+[0-9]*-[A-Za-z0-9_-]{40,}$' ]]; }
+
+# setup-token prints the token over two lines, and `read` stops at the first
+# newline. So read the clipboard instead and drop all whitespace.
+print "Select the WHOLE token (both lines) and copy it (cmd-C), then press Enter."
+read -rs _
+token=$(pbpaste | LC_ALL=C tr -d '[:space:]')
+pbcopy </dev/null  # don't leave the token on the clipboard
+if ! valid "$token"; then
+  print -u2 "Clipboard doesn't hold a Claude token (sk-ant-...). Nothing saved."
+  exit 1
+fi
+if [[ $token == sk-ant-oat01-* && ${#token} -ne 108 ]]; then
+  print -u2 "Token is ${#token} chars; full ones are usually 108. Partial copy?"
+  read -q "?Save anyway? [y/N] " || { print; exit 1; }
+  print
+fi
+print "Got ${token[1,14]}… (${#token} chars)."
+
+rm -f -- "$out.new"
+print -rn -- "$token" > "$out.new"
+chmod 600 "$out.new"
+mv -f "$out.new" "$out"
+token=""
+print "Saved $out (0600)."
+print "Check it:  claude-as $label -p 'say ok' --model claude-haiku-4-5-20251001"

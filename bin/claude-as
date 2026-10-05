@@ -1,0 +1,46 @@
+#!/bin/zsh
+# claude-as LABEL [claude args...]
+#
+# Run Claude Code billed to the account whose token claude-token-harvest
+# saved as LABEL. Settings, skills, CLAUDE.md and memory stay shared
+# (~/.claude); only the account changes. Example:
+#   claude-as b --model claude-sonnet-5-5
+set -euo pipefail
+
+label=${1:-}
+if [[ ! $label =~ '^[A-Za-z0-9_-]{1,32}$' ]]; then
+  print -u2 "usage: claude-as LABEL [claude args...]"
+  exit 2
+fi
+shift
+
+f=$HOME/.config/claude-env/tokens/$label.token
+if [[ -L $f || -L ${f:h} ]]; then
+  print -u2 "refusing: $f or its directory is a symlink"
+  exit 2
+fi
+if [[ ! -r $f ]]; then
+  print -u2 "no token for '$label' ($f). Run: claude-token-harvest $label"
+  exit 2
+fi
+if [[ ! -O $f ]]; then
+  print -u2 "refusing: $f is not owned by you"
+  exit 2
+fi
+if [[ $(stat -f %Lp "$f") != 600 ]]; then
+  print -u2 "refusing: $f must be mode 600 (chmod 600 $f)"
+  exit 2
+fi
+
+token="$(<"$f")"
+if [[ -z $token ]]; then
+  print -u2 "refusing: $f is empty (run: claude-token-harvest $label)"
+  exit 2
+fi
+
+# Other auth sources outrank the OAuth token and would bill the wrong account.
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_USE_BEDROCK \
+  CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY
+export CLAUDE_CODE_OAUTH_TOKEN="$token"
+export CLAUDE_ACCOUNT_LABEL="$label"
+exec claude "$@"
