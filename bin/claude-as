@@ -15,8 +15,16 @@ fi
 shift
 
 f=$HOME/.config/claude-env/tokens/$label.token
+if [[ -L $f || -L ${f:h} ]]; then
+  print -u2 "refusing: $f or its directory is a symlink"
+  exit 2
+fi
 if [[ ! -r $f ]]; then
   print -u2 "no token for '$label' ($f). Run: claude-token-harvest $label"
+  exit 2
+fi
+if [[ ! -O $f ]]; then
+  print -u2 "refusing: $f is not owned by you"
   exit 2
 fi
 if [[ $(stat -f %Lp "$f") != 600 ]]; then

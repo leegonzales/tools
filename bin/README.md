@@ -11,9 +11,10 @@ Neither script contains a secret. They only reference the token directory path.
 
 ## Install
 
-Symlink them onto your `PATH` so the repo stays the source of truth:
+Run these from the main checkout (not a temporary worktree), so the links survive. They symlink the scripts onto your `PATH` so the repo stays the source of truth:
 
 ```sh
+mkdir -p ~/.local/bin
 ln -sf "$PWD/bin/claude-as" ~/.local/bin/claude-as
 ln -sf "$PWD/bin/claude-token-harvest" ~/.local/bin/claude-token-harvest
 ```
@@ -27,4 +28,6 @@ claude-as b --model claude-sonnet-5-5       # run Claude Code as account b
 
 ## Limits
 
-`claude-as` clears `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and the cloud-provider flags, but it cannot override an `apiKeyHelper` in `~/.claude/settings.json`, which outranks the OAuth token. Do not set one if you use `claude-as`.
+`claude-as` clears `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and the cloud-provider flags, but it cannot override an `apiKeyHelper` in `~/.claude/settings.json`, which outranks the OAuth token. Project-level `.claude/settings.json` can set one too. Do not set one if you use `claude-as`.
+
+The scripts refuse a token file or directory that is a symlink or is not owned by you. The token is visible to every child process of the `claude` session (it is an environment variable), and sits on the clipboard briefly during `claude-token-harvest`.

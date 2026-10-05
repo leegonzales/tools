@@ -9,8 +9,9 @@
 # account you want for this LABEL (a private window for the second account
 # works). `claude setup-token` opens the browser login.
 #
-# After setup-token prints the token, paste it at the prompt; input is
-# hidden. The token is never printed in full or put on a command line.
+# After setup-token prints the token, select and copy it (both lines); the
+# script reads the clipboard, then clears it. The token is never printed in
+# full or put on a command line.
 # Use the token with: claude-as LABEL [claude args...]
 set -euo pipefail
 
@@ -23,7 +24,15 @@ fi
 dir=$HOME/.config/claude-env/tokens
 out=$dir/$label.token
 umask 077
+if [[ -L $dir || -L ${dir:h} ]]; then
+  print -u2 "refusing: $dir or its parent is a symlink"
+  exit 2
+fi
 mkdir -p "$dir"
+if [[ ! -O $dir ]]; then
+  print -u2 "refusing: $dir is not owned by you"
+  exit 2
+fi
 chmod 700 "$dir"
 
 if [[ -e $out ]]; then
@@ -60,6 +69,7 @@ if [[ $token == sk-ant-oat01-* && ${#token} -ne 108 ]]; then
 fi
 print "Got ${token[1,14]}… (${#token} chars)."
 
+rm -f -- "$out.new"
 print -rn -- "$token" > "$out.new"
 chmod 600 "$out.new"
 mv -f "$out.new" "$out"
