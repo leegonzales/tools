@@ -24,3 +24,7 @@ ln -sf "$PWD/bin/claude-token-harvest" ~/.local/bin/claude-token-harvest
 claude-token-harvest b                      # once per account
 claude-as b --model claude-sonnet-5-5       # run Claude Code as account b
 ```
+
+## Limits
+
+`claude-as` clears `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and the cloud-provider flags, but it cannot override an `apiKeyHelper` in `~/.claude/settings.json`, which outranks the OAuth token. Do not set one if you use `claude-as`.
