@@ -24,6 +24,15 @@ if [[ $(stat -f %Lp "$f") != 600 ]]; then
   exit 2
 fi
 
-export CLAUDE_CODE_OAUTH_TOKEN="$(<"$f")"
+token="$(<"$f")"
+if [[ -z $token ]]; then
+  print -u2 "refusing: $f is empty (run: claude-token-harvest $label)"
+  exit 2
+fi
+
+# Other auth sources outrank the OAuth token and would bill the wrong account.
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_USE_BEDROCK \
+  CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY
+export CLAUDE_CODE_OAUTH_TOKEN="$token"
 export CLAUDE_ACCOUNT_LABEL="$label"
 exec claude "$@"
